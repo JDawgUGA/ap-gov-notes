@@ -1,37 +1,54 @@
-const WebSocket = require('ws');
-const net = require('net');
+const { exec, spawn } = require('child_process');
+const fs = require('fs');
+const path = require('path');
 
 const PORT = process.env.PORT || 8080;
-const wss = new WebSocket.Server({ port: PORT }, () => {
-    console.log(`Proxy pipeline listening on port ${PORT}`);
-});
+const FALIX_HOST = 'riverwoodserver.falix.gg';
+const FALIX_PORT = 20972;
 
-wss.on('connection', (ws) => {
-    console.log('Incoming client request. Tunneling packet stream...');
-    
-    // Connects directly to your FalixNodes target port
-    const client = net.connect(20972, 'riverwoodserver.falix.gg', () => {
-        console.log('Backend channel established.');
+// URLs for Gate Proxy binary depending on environment (Render uses Linux amd64)
+const GATE_VERSION = '0.34.0'; 
+const DOWNLOAD_URL = `https://github.com{GATE_VERSION}/gate_${GATE_VERSION}_linux_amd64`;
+const binaryPath = path.join(__dirname, 'gate');
+
+// 1. Setup the Gate configuration file dynamically
+const configContent = `
+config:
+  bind: "0.0.0.0:${PORT}"
+  compatibility:
+    eaglercraft:
+      enabled: true
+      websocket:
+        handshake: true
+  servers:
+    falix: "${FALIX_HOST}:${FALIX_PORT}"
+  try:
+    - falix
+`;
+
+function startGate() {
+    console.log("Writing gate config.yml...");
+    fs.writeFileSync(path.join(__dirname, 'config.yml'), configContent);
+
+    console.log("Launching Gate Proxy process...");
+    const gateProcess = spawn(binaryPath, ['-c', 'config.yml'], { stdio: 'inherit' });
+
+    gateProcess.on('close', (code) => {
+        console.log(`Gate Proxy exited with code ${code}`);
     });
+}
 
-    ws.on('message', (message) => {
-        client.write(message);
-    });
-
-    client.on('data', (data) => {
-        if (ws.readyState === WebSocket.OPEN) {
-            ws.send(data);
+// 2. Download Gate binary if it doesn't exist
+if (!fs.existsSync(binaryPath)) {
+    console.log(`Downloading Gate Proxy v${GATE_VERSION}...`);
+    exec(`curl -L -o ${binaryPath} ${DOWNLOAD_URL} && chmod +x ${binaryPath}`, (err) => {
+        if (err) {
+            console.error("Failed to download or permission Gate binary:", err);
+            process.exit(1);
         }
+        console.log("Gate Proxy downloaded successfully.");
+        startGate();
     });
-
-    ws.on('close', () => {
-        client.end();
-    });
-
-    client.on('close', () => {
-        ws.close();
-    });
-
-    ws.on('error', () => { ws.close(); });
-    client.on('error', () => { client.end(); });
-});
+} else {
+    startGate();
+}
