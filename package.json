@@ -1,9 +1,10 @@
 {
-  "name": "ap-gov-notes-proxy",
+  "name": "geometry-notes",
   "version": "1.0.0",
   "main": "index.js",
   "dependencies": {
-    "ws": "^8.14.2"
+    "ws": "^8.14.2",
+    "prismarine-proxy": "^1.2.0"
   },
   "scripts": {
     "start": "node index.js"
